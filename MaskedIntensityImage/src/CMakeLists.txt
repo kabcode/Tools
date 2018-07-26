@@ -4,7 +4,11 @@ project(MaskedIntensityImage)
 find_package(ITK REQUIRED 
 	COMPONENTS
 		ITKCommon
+		ITKLabelMap
+		ITKImageIntensity
 		ITKIOImageBase
+		ITKIOMeta
+		ITKIONRRD
 )
 include(${ITK_USE_FILE})
 
