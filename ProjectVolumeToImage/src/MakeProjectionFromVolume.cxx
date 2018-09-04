@@ -9,6 +9,9 @@
 #include "itkResampleImageFilter.h"
 #include "itkExtractImageFilter.h"
 #include "itkChangeInformationImageFilter.h"
+#include "itkGDCMImageIO.h"
+#include "itkGDCMSeriesFileNames.h"
+#include "itkImageSeriesReader.h"
 #include "gdcmUUIDGenerator.h"
 
 // MORF includes
@@ -347,20 +350,44 @@ int main(int argc, char* argv[])
 		ProjectionGeometry->AddProjection(SourcePosition, DetectorPosition, RowDirection, ColumnDirection);
 	}
 	
-	
 	// Read input image
-	FS::path InputDirectory = argv[argc - 1];
-	if(!FS::exists(InputDirectory))
+	InputImageType::Pointer InputVolume;
+	if(DICOMDirectory)
 	{
-		std::cout << "directory does not exist." << std::endl;
-		return EXIT_FAILURE;
+		auto DCMIO = itk::GDCMImageIO::New();
+		auto SeriesReader = itk::ImageSeriesReader<InputImageType>::New();
+		SeriesReader->SetImageIO(DCMIO);
+		auto NameGenerator = itk::GDCMSeriesFileNames::New();
+		NameGenerator->SetDirectory(ImageSource);
+		auto SeriesUID = NameGenerator->GetSeriesUIDs();
+		std::string seriesIdentifier = SeriesUID.begin()->c_str();
+		auto FileNames = NameGenerator->GetFileNames(seriesIdentifier);
+		SeriesReader->SetFileNames(FileNames);
+		try
+		{
+			SeriesReader->Update();
+		}
+		catch (...)
+		{
+			return EXIT_FAILURE;
+		}
+		InputVolume = SeriesReader->GetOutput();
 	}
-	auto InputFileName = InputDirectory;
-	InputFileName.append("Fixed3D.nrrd");
-	auto ImageReader = ImageReaderType::New();
-	ImageReader->SetFileName(InputFileName.string());
-
-	auto InputVolume = ImageReader->GetOutput();
+	else
+	{
+		auto ImageReader = itk::ImageFileReader<InputImageType>::New();
+		ImageReader->SetFileName(ImageSource);
+		try
+		{
+			ImageReader->Update();
+		}
+		catch (...)
+		{
+			return EXIT_FAILURE;
+		}
+		InputVolume = ImageReader->GetOutput();
+	}
+	
 	try
 	{
 		InputVolume->Update();
@@ -426,6 +453,7 @@ int main(int argc, char* argv[])
 	}
 
 	// Check if subdirectory for projections exist otherwise create it
+	auto InputDirectory = FS::current_path();
 	FS::path ProjectionDirectory = InputDirectory.append("Projections");	
 	if(!FS::exists(ProjectionDirectory))
 	{
