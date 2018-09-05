@@ -48,8 +48,8 @@ const double Pi = itk::Math::pi;
 void
 PrintUsage(char * programmname)
 {
-	std::cout << "Information to " << programmname << std::endl;
-	std::cout << "Usage:\n" << std::endl;
+	std::cout << "\nInformation to " << programmname << std::endl;
+	std::cout << "Usage: " << std::endl;
 	std::cout << programmname << " <options> <inputoptions>" << std::endl;
 	std::cout << std::endl;
 	std::cout << "The default position of the geometry is the source pointing towards the positive y-axis (at patient in HFS it's along anterior-posterior).\n";
@@ -74,6 +74,7 @@ PrintUsage(char * programmname)
 	std::cout << "-oa" << "\t\t\t" << "Rotation around x axis (patient axis in HFS, OutOfPlane angle)" << std::endl;
 	std::cout << "-ia" << "\t\t\t" << "Rotation around z axis (patient axis in HFS, InPlane angle)" << std::endl;
 	std::cout << "-g" << "\t\t\t" << "Provided geometry file" << std::endl;
+	std::cout << "-src" << "\t\t\t" << "Write file containing a single pixel at source position" << std::endl;
 	std::cout << "-h" << "\t\t\t" << "Print this information" << std::endl;
 
 	std::cout << "\ninputoptions:" << std::endl;
@@ -92,9 +93,8 @@ int TestProjection(std::string);
 int main(int argc, char* argv[])
 {
 	// check input arguments
-	if (argc < 2)
+	if (argc < 3)
 	{
-		std::cout << "To few arguments." << std::endl;
 		PrintUsage(argv[0]);
 		return EXIT_FAILURE;
 	}
@@ -104,6 +104,7 @@ int main(int argc, char* argv[])
 	auto GeometryFile("");
 	auto DICOMDirectory = false;
 	auto ImageSource("");
+	auto WriteSrcPxl = false;
 
 	// Detector image resembles the actual detector
 	auto DetectorImage  = InternalImageType::New();
@@ -268,6 +269,10 @@ int main(int argc, char* argv[])
 			GeometryProvided = true;
 			++i;
 			GeometryFile = argv[i];
+		}
+		if (std::string(argv[i]).substr(0, 4) == "-src")
+		{
+			WriteSrcPxl = true;
 		}
 
 		// general options
@@ -480,8 +485,41 @@ int main(int argc, char* argv[])
 	DRRFileName        += ".nrrd";
 	GeometryFileName   += UUIDShort;
 	GeometryFileName   +=".geom";
-	std::cout << ProjectionFileName << std::endl;
-	std::cout << GeometryFileName << std::endl;
+	std::cout << UUIDShort << std::endl;
+
+	// src pixel
+	if (WriteSrcPxl)
+	{
+		InternalImageType::IndexType SrcIdx;
+		SrcIdx.Fill(0);
+		InternalImageType::SizeType SrcSz;
+		SrcSz.Fill(1);
+		InternalImageType::RegionType SrcReg(SrcIdx, SrcSz);
+		auto SrcPxl = InternalImageType::New();
+		SrcPxl->SetRegions(SrcReg);
+		SrcPxl->Allocate();
+		SrcPxl->FillBuffer(1);
+		SrcPxl->SetOrigin(SourcePosition);
+
+		auto SrcPxlWriter = ImageWriterType::New();
+		SrcPxlWriter->SetInput(SrcPxl);
+		auto SrcPxlFileName = ProjectionDirectory;
+		SrcPxlFileName.append("S");
+		SrcPxlFileName += UUIDShort;
+		SrcPxlFileName += ".nrrd";
+		SrcPxlWriter->SetFileName(SrcPxlFileName.string());
+
+		try
+		{
+			SrcPxlWriter->Update();
+		}
+		catch (itk::ExceptionObject &EO)
+		{
+			std::cout << "Write source point error." << std::endl;
+			EO.Print(std::cout);
+			return EXIT_FAILURE;
+		}
+	}
 
 	auto ProjectionImageWriter = ImageWriterType::New();
 	ProjectionImageWriter->SetInput(ChangeInformationFilter->GetOutput());
