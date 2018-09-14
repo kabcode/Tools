@@ -298,9 +298,17 @@ int main(int argc, char* argv[])
 	}
 
 	// Adjust the default projector geometry to the user input
-	SourcePosition[2]   = SID;
-	DetectorPosition[2] = - (SDD - SID); // if SID or SDD changed
-
+	if(SID <= SDD)
+	{
+		SourcePosition[2] = SID;
+		DetectorPosition[2] = -(SDD - SID); // if SID or SDD changed
+	}
+	else
+	{
+		std::cout << "SID larger than SDD. PLease reconfigure geometry." << std::endl;
+		return EXIT_FAILURE;
+	}
+	
 	if(DetectorChanged) // if Size or spacing has changed
 	{
 		Region.SetSize(Size);
