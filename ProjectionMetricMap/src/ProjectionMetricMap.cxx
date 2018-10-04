@@ -14,6 +14,8 @@ using Image2DType = itk::CudaImage<PixelType, Dim2>;
 using Image3DType = itk::CudaImage<PixelType, Dim3>;
 using Image2DReaderType = itk::ImageFileReader<Image2DType>;
 using Image3DReaderType = itk::ImageFileReader<Image3DType>;
+using GeometryType = rtk::ThreeDCircularProjectionGeometry;
+using GeometryPointer = GeometryType::Pointer;
 using GeometryReaderType = rtk::ThreeDCircularProjectionGeometryXMLFileReader;
 using InterpolatorType = itk::LinearInterpolateImageFunction<Image2DType>;
 
@@ -123,10 +125,13 @@ int main(int argc, char* argv[])
 
 	// Read Projection geometry file
 	auto GeometryReader = GeometryReaderType::New();
+	std::cout << GeometryReader->CanReadFile(argv[3]) << std::endl;
+	std::cout << "File: " << argv[3] << std::endl;
 	GeometryReader->SetFilename(argv[3]);
 	GeometryReader->GenerateOutputInformation();
 	auto Geometry = GeometryReader->GetOutputObject();
 	Geometry->Print(std::cout);
+	
 
 	try
 	{
@@ -147,7 +152,7 @@ int main(int argc, char* argv[])
 	ProjectionFilter->SetInput(1, MovingImage);
 	ProjectionFilter->SetDetectorImage<Image2DType>(FixedImage);
 	ProjectionFilter->SetTransform(Transform.GetPointer());
-	ProjectionFilter->SetBaseGeometry(GeometryReader->GetOutputObject());
+	ProjectionFilter->SetBaseGeometry(Geometry);
 	ProjectionFilter->InPlaceOff();
 
 	auto ExtractImageFilter = ExtractImagFilterType::New();
@@ -205,6 +210,18 @@ int main(int argc, char* argv[])
 	std::ofstream OutputStream;
 	auto ToFile = false;
 
+	// compute number of values
+	int valuesX = ((rangeX.second - rangeX.first) / stepsize[0]) + 1;
+	int valuesY = ((rangeY.second - rangeY.first) / stepsize[0]) + 1;
+	int valuesZ = ((rangeZ.second - rangeZ.first) / stepsize[0]) + 1;
+
+	long allprojections = valuesX * valuesY * valuesZ;
+	long current = 0;
+	auto percentage = 0;
+	
+	std::cout << "Number of projections to be computed: " << allprojections << std::endl;
+	std::cout << percentage << "%" << std::endl;
+
 	if (OutputFilename.compare("") != 0)
 	{
 		OutputStream.open(OutputFilename, std::ios::trunc);
@@ -261,6 +278,13 @@ int main(int argc, char* argv[])
 					{
 						std::cout << Transform->GetParameters() << std::endl;
 					}
+				}
+
+				++current;
+				if(floor(current*100/allprojections) > percentage)
+				{
+					percentage = floor(current*100 / allprojections);
+					std::cout << percentage << "%" << std::endl;
 				}
 			}
 		}
