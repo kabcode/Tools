@@ -1,5 +1,6 @@
 #include "itkGDCMImageIO.h"
 #include "itkGDCMSeriesFileNames.h"
+#include "gdcmUIDGenerator.h"
 #include "itkImageSeriesReader.h"
 
 #include "itkImageRegistrationMethodv4.h"
@@ -13,8 +14,10 @@
 
 #include "itkResampleImageFilter.h"
 #include "itkImageFileWriter.h"
+#include "itkImageSeriesWriter.h"
 
 #include "itkCommand.h"
+#include "itkVersion.h"
 
 // ITK typedef
 using PixelType = float;
@@ -28,6 +31,7 @@ static constexpr int OutputDimension = 2;
 using OutputImageType = itk::Image<OutputPixelType, OutputDimension>;
 
 using ImageSeriesReaderType = itk::ImageSeriesReader<ImageType>;
+using ImageSeriesWriterType = itk::ImageSeriesWriter<ImageType, OutputImageType>;
 using ImageWriterType = itk::ImageFileWriter<ImageType>;
 
 // GDCM typedefs
@@ -80,7 +84,8 @@ public:
 
 // Helper functions
 void
-PrintUsage(char* programname)
+PrintUsage
+(char* programname)
 {
 	std::cout << "USAGE: " << std::endl;
 	std::cout << programname << " FixedDicomDirectory MovingDicomDirectory OutputDirectory" << std::endl;
@@ -89,6 +94,19 @@ PrintUsage(char* programname)
 ImageType::Pointer
 Load3DVolume
 (std::string, GDCMIOType::Pointer);
+
+void
+CopyDictionary
+(itk::MetaDataDictionary&, itk::MetaDataDictionary&);
+
+void
+WriteTransformedVolume
+(std::string, std::string, ImageType::Pointer, ImageSeriesReaderType::DictionaryArrayType, GDCMIOType::Pointer);
+
+ImageSeriesReaderType::DictionaryArrayType
+LoadDicomMetaDataDictionary
+(const char*, ImageType::Pointer, GDCMIOType::Pointer);
+
 
 int main(int argc, char* argv[])
 {
@@ -212,24 +230,24 @@ int main(int argc, char* argv[])
 	Resampler->SetReferenceImage(FixedImage);
 	Resampler->UseReferenceImageOn();
 	Resampler->SetTransform(EulerTransform);
-
-	auto ImageWriter = ImageWriterType::New();
-	ImageWriter->SetFileName("Out.nrrd");
-	ImageWriter->SetInput(Resampler->GetOutput());
+	Resampler->SetDefaultPixelValue(-1024);
 
 	try
 	{
-		ImageWriter->Update();
+		Resampler->Update();
 	}
-	catch (itk::ExceptionObject &EO)
+	catch (itk::ExceptionObject EO)
 	{
-		std::cerr << "Writing error" << std::endl;
+		std::cerr << "Resample error" << std::endl;
 		EO.Print(std::cerr);
 		return EXIT_FAILURE;
 	}
+
+	// Output dicom creation
+	auto OutputDicomHeader = LoadDicomMetaDataDictionary(argv[1], Resampler->GetOutput(), FixedGDCMIO);
+	WriteTransformedVolume(argv[3], argv[1], Resampler->GetOutput(), OutputDicomHeader, FixedGDCMIO);
 	
 	return EXIT_SUCCESS;
-
 }
 
 ImageType::Pointer
@@ -260,4 +278,168 @@ Load3DVolume
 		std::cerr << EO << std::endl;
 		return nullptr;
 	}
+}
+
+void
+CopyDictionary
+(itk::MetaDataDictionary &SrcDict, itk::MetaDataDictionary &DestDict)
+{
+	typedef itk::MetaDataDictionary DictionaryType;
+
+	DictionaryType::ConstIterator Iter = SrcDict.Begin();
+	DictionaryType::ConstIterator End = SrcDict.End();
+	typedef itk::MetaDataObject< std::string > MetaDataStringType;
+
+	while (Iter != End)
+	{
+		auto Entry = Iter->second;
+
+		MetaDataStringType::Pointer EntryValue = dynamic_cast<MetaDataStringType *>(Entry.GetPointer());
+		if (EntryValue)
+		{
+			std::string TagKey = Iter->first;
+			std::string TagValue = EntryValue->GetMetaDataObjectValue();
+			itk::EncapsulateMetaData<std::string>(DestDict, TagKey, TagValue);
+		}
+		++Iter;
+	}
+}
+
+void
+WriteTransformedVolume
+(std::string OutputDirectory, std::string InputDirectory, ImageType::Pointer Image, ImageSeriesReaderType::DictionaryArrayType Dict, GDCMIOType::Pointer GDCMIO)
+{
+	// setup the directories for the output
+	itksys::SystemTools::MakeDirectory(OutputDirectory);
+
+	auto FileNameGenerator = NamesGeneratorType::New();
+	FileNameGenerator->SetInputDirectory(InputDirectory);
+	auto FileNames = FileNameGenerator->GetInputFileNames();
+
+	printf("Writing output series\n");
+	auto SeriesWriter = ImageSeriesWriterType::New();
+	SeriesWriter->SetInput(Image);
+	SeriesWriter->SetImageIO(GDCMIO);
+	FileNameGenerator->SetOutputDirectory(OutputDirectory);
+	SeriesWriter->SetFileNames(FileNameGenerator->GetOutputFileNames());
+	SeriesWriter->SetMetaDataDictionaryArray(&Dict);
+
+	try
+	{
+		SeriesWriter->Update();
+		std::cout << "\tDONE.\n" << std::endl;
+	}
+	catch (itk::ExceptionObject &EO)
+	{
+		std::cerr << "Exception thrown while writing the series " << std::endl;
+		std::cerr << EO << std::endl;
+	}
+}
+
+ImageSeriesReaderType::DictionaryArrayType
+LoadDicomMetaDataDictionary
+(const char* Directory, ImageType::Pointer OutputImage, GDCMIOType::Pointer GDCMIO)
+{
+	std::cout << "Copy and update header data..." << std::endl;
+	auto FileNameGenerator = NamesGeneratorType::New();
+
+	// reading the volume meta data
+	FileNameGenerator->SetInputDirectory(Directory);
+	const ImageSeriesReaderType::FileNamesContainer & FileNames = FileNameGenerator->GetInputFileNames();
+
+	auto Reader = ImageSeriesReaderType::New();
+	Reader->SetImageIO(GDCMIO);
+	Reader->SetFileNames(FileNames);
+	Reader->Update();
+	ImageSeriesReaderType::DictionaryArrayType OutputArray;
+
+	auto InputDict = (*(Reader->GetMetaDataDictionaryArray()))[0];
+
+	// Generate new SeriesID and Frame of reference (they all share the same spatial reference)
+	gdcm::UIDGenerator SUID;
+	std::string SeriesUID = SUID.Generate();
+	gdcm::UIDGenerator FUID;
+	std::string FrameOfReferenceUID = FUID.Generate();
+	// Retireve the Study ID and the SOP Class ID
+	std::string StudyUID;
+	std::string SOPClassUID;
+	itk::ExposeMetaData<std::string>(*InputDict, "0020|000d", StudyUID);
+	itk::ExposeMetaData<std::string>(*InputDict, "0008|0016", SOPClassUID);
+	GDCMIO->KeepOriginalUIDOn();
+
+	for (unsigned int f = 0; f < Reader->GetOutput()->GetLargestPossibleRegion().GetSize()[2]; f++)
+	{
+		// Create a new dictionary for this slice
+		ImageSeriesReaderType::DictionaryRawPointer Dict = new ImageSeriesReaderType::DictionaryType;
+
+		// Copy the dictionary from the first slice
+		CopyDictionary(*InputDict, *Dict);
+
+		// Set the UID's for the study, series, SOP  and frame of reference
+		itk::EncapsulateMetaData<std::string>(*Dict, "0020|000d", StudyUID);
+		itk::EncapsulateMetaData<std::string>(*Dict, "0020|000e", SeriesUID);
+		itk::EncapsulateMetaData<std::string>(*Dict, "0020|0052", FrameOfReferenceUID);
+
+		// Dicom share a SOPClass but every dicom has its own SOPInstanceUID and this is usually also the Media Storage SOPInstanceUID
+		gdcm::UIDGenerator SOPUID;
+		std::string SOPInstanceUID = SOPUID.Generate();
+		itk::EncapsulateMetaData<std::string>(*Dict, "0008|0018", SOPInstanceUID);
+		itk::EncapsulateMetaData<std::string>(*Dict, "0002|0003", SOPInstanceUID);
+
+		// Change fields that are slice specific
+		std::ostringstream Value;
+		Value.str("");
+		Value << f + 1;
+
+		// Image Number
+		itk::EncapsulateMetaData<std::string>(*Dict, "0020|0013", Value.str());
+
+		// Series Description - Append new description to current series description
+		std::string OldSeriesDesc;
+		itk::ExposeMetaData<std::string>(*InputDict, "0008|103e", OldSeriesDesc);
+
+		Value.str("");
+		Value << OldSeriesDesc << ": + TRANSFORMED";
+
+		// This is an long string and there is a 64 character limit in the standard
+		unsigned LengthDesc = Value.str().length();
+
+		std::string SeriesDesc(Value.str(), 0, LengthDesc > 64 ? 64 : LengthDesc);
+		itk::EncapsulateMetaData<std::string>(*Dict, "0008|103e", SeriesDesc);
+
+		// Series Number can be any number, Should be the same for all objects in study
+		Value.str("");
+		Value << 1001;
+		itk::EncapsulateMetaData<std::string>(*Dict, "0020|0011", Value.str());
+
+		// Derivation description - how this image was derived
+		Value.str("");
+		Value << "ITK: " << ITK_SOURCE_VERSION;
+
+		LengthDesc = Value.str().length();
+		std::string DerivationDesc(Value.str(), 0, LengthDesc > 1024 ? 1024 : LengthDesc);
+		itk::EncapsulateMetaData<std::string>(*Dict, "0008|2111", DerivationDesc);
+
+		// Image Position Patient: This is calculated by computing the
+		// physical coordinate of the first pixel in each slice.
+		ImageType::PointType Position;
+		ImageType::IndexType Index;
+		Index[0] = 0;
+		Index[1] = 0;
+		Index[2] = f;
+		OutputImage->TransformIndexToPhysicalPoint(Index, Position);
+
+		Value.str("");
+		Value << Position[0] << "\\" << Position[1] << "\\" << Position[2];
+		itk::EncapsulateMetaData<std::string>(*Dict, "0020|0032", Value.str());
+		// Slice Location: For now, we store the z component of the Image Position Patient.
+		Value.str("");
+		Value << Position[2];
+		itk::EncapsulateMetaData<std::string>(*Dict, "0020|1041", Value.str());
+
+		// Save the dictionary
+		OutputArray.push_back(Dict);
+	}
+	std::cout << "\tDONE.\n" << std::endl;
+	return OutputArray;
 }
