@@ -31,7 +31,9 @@ PrintUsage(char * programmname)
 {
 	std::cout << "\nInformation to " << programmname << std::endl;
 	std::cout << "Usage: " << std::endl;
-	std::cout << programmname << " VolumeFile TransformFile" << std::endl;
+	std::cout << programmname << " VolumeFile TransformFile <optional parameters>" << std::endl;
+	std::cout << "\noptional parameters:\n" << std::endl;
+	std::cout << "-of OutputFilename" << std::endl;
 	std::cout << std::endl;
 }
 
@@ -42,6 +44,17 @@ int main(int argc, char* argv[])
 	{
 		PrintUsage(argv[0]);
 		return EXIT_FAILURE;
+	}
+
+	// input handling
+	std::string OutputFilename("TransformedObject.nrrd");
+	for (auto i = 3; i < argc; ++i)
+	{
+		if( std::string(argv[i]) == "-of")
+		{
+			++i;
+			OutputFilename = argv[i];
+		}
 	}
 
 	auto ImageReader = ImageReaderType::New();
@@ -69,7 +82,6 @@ int main(int argc, char* argv[])
 	}
 
 	auto TransformList = TransformReader->GetTransformList();
-	std::cout << "Number of transforms = " << TransformList->size() << std::endl;
 	auto Transformation = TransformList->begin()->GetPointer();
 	Transformation->Print(std::cout);
 	auto T = EulerTransformType::New();
@@ -114,8 +126,8 @@ int main(int argc, char* argv[])
 
 	auto ImageWriter = ImageWriterType::New();
 	ImageWriter->SetInput(ResampleFilter->GetOutput());
-	ImageWriter->SetFileName("TansformedObject.nrrd");
-
+	ImageWriter->SetFileName(OutputFilename);
+	
 	try
 	{
 		ImageWriter->Update();
