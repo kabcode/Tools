@@ -17,9 +17,9 @@ using ThresholdImageFilterType = itk::ThresholdImageFilter<ImageType>;
 
 int main(int argc, char *argv[])
 {
-	if(argc < 2)
+	if(argc < 3)
 	{
-		std::cout << "HUImageToAttenuationImage.exe InputImage" << std::endl;
+		std::cout << "HUImageToAttenuationImage.exe InputImageFileName OutputImageFileName" << std::endl;
 		return EXIT_FAILURE;
 	}
 
@@ -47,7 +47,8 @@ int main(int argc, char *argv[])
 
 	auto ImageFileWriter = ImageFileWriterType::New();
 	ImageFileWriter->SetInput(ThresholdImageFilter->GetOutput());
-	ImageFileWriter->SetFileName("AttenuationImage.nrrd");
+	std::string OutputImageFilename(argv[2]);
+	ImageFileWriter->SetFileName(OutputImageFilename);
 
 	try
 	{
