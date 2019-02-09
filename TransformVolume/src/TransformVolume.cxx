@@ -19,21 +19,25 @@ using OutputImageType = itk::Image<PixelType, Dim3D>;
 
 using ImageReaderType = itk::ImageFileReader<InputImageType>;
 using ImageWriterType = itk::ImageFileWriter<OutputImageType>;
-using TransformReaderType = itk::TransformFileReader;
-using TransformWriterType = itk::TransformFileWriter;
+using TransformReaderType = itk::TransformFileReaderTemplate<double>;
+using TransformWriterType = itk::TransformFileWriterTemplate<double>;
 using OutputImageWriterType = itk::ImageFileWriter<OutputImageType>;
 using EulerTransformType = itk::Euler3DTransform<double>;
 using EulerTransformPointer = EulerTransformType::Pointer;
 using ResampleImageFilterType = itk::ResampleImageFilter<InputImageType, OutputImageType>;
+
+double inline deg2rad(double deg) { return deg / 180 * (itk::Math::pi / 2);  }
 
 void
 PrintUsage(char * programmname)
 {
 	std::cout << "\nInformation to " << programmname << std::endl;
 	std::cout << "Usage: " << std::endl;
-	std::cout << programmname << " VolumeFile TransformFile <optional parameters>" << std::endl;
+	std::cout << programmname << " VolumeFile -o OutputFile <optional parameters>" << std::endl;
 	std::cout << "\noptional parameters:\n" << std::endl;
-	std::cout << "-of OutputFilename" << std::endl;
+	std::cout << "-t x y z \t\t Translation in x,y,z direction in mm" << std::endl;
+	std::cout << "-r x y z \t\t Rotation around x,y,z axis in degree(order: ZXY)" << std::endl;
+	std::cout << "-f Transformfilename \t\t File with transformation parameter" << std::endl;
 	std::cout << std::endl;
 }
 
@@ -47,13 +51,39 @@ int main(int argc, char* argv[])
 	}
 
 	// input handling
-	std::string OutputFilename("TransformedObject.nrrd");
-	for (auto i = 3; i < argc; ++i)
+	std::vector<double> Translation = {0,0,0};
+	std::vector<double> Rotation = {0,0,0};
+	std::string OutputFilename("");
+	std::string TransformationFileName("");
+	for (auto i = 1; i < argc; ++i)
 	{
-		if( std::string(argv[i]) == "-of")
+		if( std::string(argv[i]) == "-o")
 		{
 			++i;
 			OutputFilename = argv[i];
+		}
+		if (std::string(argv[i]) == "-f")
+		{
+			++i;
+			TransformationFileName = argv[i];
+		}
+		if (std::string(argv[i]) == "-t")
+		{
+			++i;
+			Translation[0] = std::atof(argv[i]);
+			++i;
+			Translation[1] = std::atof(argv[i]);
+			++i;
+			Translation[2] = std::atof(argv[i]);
+		}
+		if (std::string(argv[i]) == "-r")
+		{
+			++i;
+			Rotation[0] = std::atof(argv[i]);
+			++i;
+			Rotation[1] = std::atof(argv[i]);
+			++i;
+			Rotation[2] = std::atof(argv[i]);
 		}
 	}
 
@@ -69,25 +99,49 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
-	auto TransformReader = TransformReaderType::New();
-	TransformReader->SetFileName(argv[2]);
-	try
+
+	auto T = EulerTransformType::New();
+	if(!TransformationFileName.empty())
 	{
-		TransformReader->Update();
+		auto TransformFileReader = TransformReaderType::New();
+		TransformFileReader->SetFileName(TransformationFileName);
+		try
+		{
+			TransformFileReader->Update();
+		}
+		catch (itk::ExceptionObject &EO)
+		{
+			EO.Print(std::cout);
+			return EXIT_FAILURE;
+		}
+
+		const TransformReaderType::TransformListType * transforms =	TransformFileReader->GetTransformList();
+		auto it = transforms->begin();
+		if (!strcmp((*it)->GetNameOfClass(), "Euler3DTransform"))
+		{
+			T = static_cast< EulerTransformType* >((*it).GetPointer());
+		}
 	}
-	catch (itk::ExceptionObject &EO)
+	else
 	{
-		EO.Print(std::cout);
-		return EXIT_FAILURE;
+		T->SetRotation(deg2rad(Rotation[0]), deg2rad(Rotation[1]), deg2rad(Rotation[1]));
+		EulerTransformType::OutputVectorType TranslationVector;
+		for (auto i = 0; i < Translation.size(); ++i)
+		{
+			TranslationVector[i] = Translation[i];
+		}
+		T->SetTranslation(TranslationVector);
+
+		// Rotate over image center before translate
+		auto origin = ImageReader->GetOutput()->GetOrigin();
+		auto spacing = ImageReader->GetOutput()->GetSpacing();
+		auto size = ImageReader->GetOutput()->GetLargestPossibleRegion().GetSize();
+		origin[0] += spacing[0] * static_cast<double>(size[0]) / 2.0;
+		origin[1] += spacing[1] * static_cast<double>(size[1]) / 2.0;
+		origin[2] += spacing[2] * static_cast<double>(size[2]) / 2.0;
+		T->SetCenter(origin);
 	}
 
-	auto TransformList = TransformReader->GetTransformList();
-	auto Transformation = TransformList->begin()->GetPointer();
-	Transformation->Print(std::cout);
-	auto T = EulerTransformType::New();
-	T->SetParameters(Transformation->GetParameters());
-	T->SetFixedParameters(Transformation->GetFixedParameters());
-	
 	auto ResampleFilter = ResampleImageFilterType::New();
 	ResampleFilter->SetInput(ImageReader->GetOutput());
 	ResampleFilter->SetTransform(T);
