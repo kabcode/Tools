@@ -121,10 +121,11 @@ int main(int argc, char* argv[])
 		{
 			T = static_cast< EulerTransformType* >((*it).GetPointer());
 		}
+		T.Print(std::cout);
 	}
 	else
 	{
-		T->SetRotation(deg2rad(Rotation[0]), deg2rad(Rotation[1]), deg2rad(Rotation[1]));
+		T->SetRotation(deg2rad(Rotation[0]), deg2rad(Rotation[1]), deg2rad(Rotation[2]));
 		EulerTransformType::OutputVectorType TranslationVector;
 		for (auto i = 0; i < Translation.size(); ++i)
 		{
@@ -142,31 +143,28 @@ int main(int argc, char* argv[])
 		T->SetCenter(origin);
 	}
 
+	auto TransformWriter = itk::TransformFileWriterTemplate<double>::New();
+	TransformWriter->SetInput(T);
+	std::experimental::filesystem::path Filename(OutputFilename);
+	TransformWriter->SetFileName(Filename.stem().string() + ".tfm");
+	TransformWriter->Update();
+
 	auto ResampleFilter = ResampleImageFilterType::New();
 	ResampleFilter->SetInput(ImageReader->GetOutput());
 	ResampleFilter->SetTransform(T);
-	ResampleFilter->SetDefaultPixelValue(1);
+	ResampleFilter->SetDefaultPixelValue(0);
 
-	auto SampleVolume = OutputImageType::New();
-	OutputImageType::IndexType idx;
-	idx.Fill(0);
-	auto sz = ImageReader->GetOutput()->GetLargestPossibleRegion().GetSize();
-	OutputImageType::RegionType reg(idx, sz);
-	SampleVolume->SetRegions(reg);
-	SampleVolume->Allocate();
-	auto or = ImageReader->GetOutput()->GetOrigin();
-	or -= T->GetTranslation();
-	EulerTransformType::MatrixType M = T->GetMatrix().GetInverse();
-	auto or1 = M * or ;
-	SampleVolume->SetOrigin(or1);
-	auto dir = ImageReader->GetOutput()->GetDirection();
-	dir *= T->GetMatrix().GetInverse();
-	SampleVolume->SetDirection(dir);
-	auto spc = ImageReader->GetOutput()->GetSpacing();
-	SampleVolume->SetSpacing(spc);
+	ResampleFilter->SetInput(ImageReader->GetOutput());
+	ResampleFilter->SetTransform(T);
+	ResampleFilter->SetDefaultPixelValue(0);
 
-	ResampleFilter->SetReferenceImage(SampleVolume);
-	ResampleFilter->UseReferenceImageOn();
+	ResampleFilter->SetSize(ImageReader->GetOutput()->GetLargestPossibleRegion().GetSize());
+	ResampleFilter->SetOutputSpacing(ImageReader->GetOutput()->GetSpacing());
+
+	auto OutputOrigin = T->GetInverseTransform()->TransformPoint(ImageReader->GetOutput()->GetOrigin());
+	ResampleFilter->SetOutputOrigin(OutputOrigin);
+	auto OutputDirection = T->GetInverseMatrix() * ImageReader->GetOutput()->GetDirection();
+	ResampleFilter->SetOutputDirection(OutputDirection);
 
 	try
 	{
