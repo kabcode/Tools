@@ -181,7 +181,7 @@ int main(int argc, char* argv[])
 			Spacing[0] = atof(argv[i]);
 			DetectorChanged = true;
 		}
-		if (std::string(argv[i]).substr(0, 4) == "-spy")	// spacing in z
+		if (std::string(argv[i]).substr(0, 4) == "-spz")	// spacing in z
 		{
 			++i;
 			Spacing[1] = atof(argv[i]);
@@ -193,7 +193,7 @@ int main(int argc, char* argv[])
 			Size[0] = atof(argv[i]);
 			DetectorChanged = true;
 		}
-		if (std::string(argv[i]).substr(0, 4) == "-dsy")	// size in z
+		if (std::string(argv[i]).substr(0, 4) == "-dsz")	// size in z
 		{
 			++i;
 			Size[1] = atof(argv[i]);
@@ -216,7 +216,7 @@ int main(int argc, char* argv[])
 			++i;
 			DetectorPosition[0] += atof(argv[i]);
 		}
-		if (std::string(argv[i]).substr(0, 4) == "-doy")		// offset detector in z
+		if (std::string(argv[i]).substr(0, 4) == "-doz")		// offset detector in z
 		{
 			++i;
 			DetectorPosition[1] += atof(argv[i]);
