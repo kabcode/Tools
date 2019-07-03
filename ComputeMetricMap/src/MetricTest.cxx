@@ -12,6 +12,19 @@ using TranslationTransformType = itk::TranslationTransform<double, Dim>;
 
 using MSMetricType = itk::MeanSquaresImageToImageMetric<ImageType, ImageType>;
 
+template<int dimension>
+void AssertDepencency()
+{
+	static_assert(dimension < 3, "function 2 not available");
+	std::cout << "Here" << std::endl;
+}
+
+void AssertTest(int dimension)
+{
+	std::cout << dimension << std::endl;
+	AssertDepencency<2>();
+}
+
 void
 PrintUsage(std::string programme)
 {
@@ -28,6 +41,7 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
+	AssertTest(2);
 
 	auto FixedFileReader = ImageReaderType::New();
 	FixedFileReader->SetFileName(argv[1]);
@@ -76,28 +90,28 @@ int main(int argc, char* argv[])
 
 	std::ofstream outputFile(OutputFileName, std::ios::trunc);
 
-	auto stepsize(5);
+	auto stepsize(1);
 
 	if (!outputFile.is_open()) {
 		std::cout << "File could not be opened." << std::endl;
 	}
 	else {
-		for (auto x = -200.0; x <= 200.0; x += stepsize)
+		for (auto x = -50.0; x <= 50.0; x += stepsize)
 		{
 			params(0) = x;
-			for (auto y = -200.0; y <= 200.0; y += stepsize)
+			for (auto y = -50.0; y <= 50.0; y += stepsize)
 			{
 				params(1) = y;
 				try
 				{
 					auto value = MSMetric->GetValue(params);
 					outputFile << x << "   " << y << "   " << value << std::endl;
-					std::cout << x << "\t" << y << " \t" << value << std::endl;
+					//std::cout << x << "\t" << y << " \t" << value << std::endl;
 				}
 				catch(...)
 				{
-					outputFile << x << "   " << y << "   " << 0 << std::endl;
-					std::cout << x << "\t" << y << " \t" << "Too many outside samples" << std::endl;
+					outputFile << x << "   " << y << "   " << "NaN" << std::endl;
+					//std::cout << x << "\t" << y << " \t" << "Too many outside samples" << std::endl;
 				}
 				
 				

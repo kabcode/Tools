@@ -161,9 +161,11 @@ int main(int argc, char* argv[])
 	ResampleFilter->SetSize(ImageReader->GetOutput()->GetLargestPossibleRegion().GetSize());
 	ResampleFilter->SetOutputSpacing(ImageReader->GetOutput()->GetSpacing());
 
-	auto OutputOrigin = T->GetInverseTransform()->TransformPoint(ImageReader->GetOutput()->GetOrigin());
+	const auto OutputOrigin = T->GetInverseTransform()->TransformPoint(ImageReader->GetOutput()->GetOrigin());
 	ResampleFilter->SetOutputOrigin(OutputOrigin);
-	auto OutputDirection = T->GetInverseMatrix() * ImageReader->GetOutput()->GetDirection();
+	const auto InverseTransform = T->Clone();
+	T->GetInverse(InverseTransform);
+	const auto OutputDirection = InverseTransform->GetMatrix() * ImageReader->GetOutput()->GetDirection();
 	ResampleFilter->SetOutputDirection(OutputDirection);
 
 	try
