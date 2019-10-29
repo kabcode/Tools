@@ -16,6 +16,7 @@
  *
  *=========================================================================*/
 
+
 #include "itkImageRegistrationMethod.h"
 #include "itkMattesMutualInformationImageToImageMetric.h"
 
@@ -839,5 +840,3 @@ int main(int argc, char *argv[])
 
     return EXIT_SUCCESS;
 }
-Tarballs of the nightly generated Doxygen documentation are available for the html, xml, and tag file.
-Generated on Wed Aug 28 2019 01:33 : 42 for ITK by   doxygen 1.8.16

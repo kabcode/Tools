@@ -7,11 +7,12 @@
 #include "itkTransformFileReader.h"
 #include "itkTransformFileWriter.h"
 #include "itkEuler3DTransform.h"
+#include "itkBSplineTransform.h"
 #include "itkResampleImageFilter.h"
 #include "itkExtractImageFilter.h"
 
 
-using PixelType = float;
+using PixelType = unsigned char;
 const unsigned int Dim3D = 3;
 const unsigned int Dim2D = 2;
 using InputImageType = itk::Image<PixelType, Dim3D>;
@@ -24,6 +25,8 @@ using TransformWriterType = itk::TransformFileWriterTemplate<double>;
 using OutputImageWriterType = itk::ImageFileWriter<OutputImageType>;
 using EulerTransformType = itk::Euler3DTransform<double>;
 using EulerTransformPointer = EulerTransformType::Pointer;
+using BSplineTransformType = itk::BSplineTransform<double>;
+using BSplineTransformPointer = BSplineTransformType::Pointer;
 using ResampleImageFilterType = itk::ResampleImageFilter<InputImageType, OutputImageType>;
 
 double inline deg2rad(double deg) { return deg / 180 * (itk::Math::pi / 2);  }
@@ -100,7 +103,8 @@ int main(int argc, char* argv[])
 	}
 
 
-	auto T = EulerTransformType::New();
+    EulerTransformPointer T = nullptr;
+    BSplineTransformPointer B = nullptr;
 	if(!TransformationFileName.empty())
 	{
 		auto TransformFileReader = TransformReaderType::New();
@@ -119,8 +123,12 @@ int main(int argc, char* argv[])
 		auto it = transforms->begin();
 		if (!strcmp((*it)->GetNameOfClass(), "Euler3DTransform"))
 		{
-			T = static_cast< EulerTransformType* >((*it).GetPointer());
+			T = dynamic_cast< EulerTransformType* >((*it).GetPointer());
 		}
+        if (!strcmp((*it)->GetNameOfClass(), "BSplineTransform"))
+        {
+            B = dynamic_cast<BSplineTransformType*>((*it).GetPointer());
+        }
 		T.Print(std::cout);
 	}
 	else
@@ -144,29 +152,36 @@ int main(int argc, char* argv[])
 	}
 
 	auto TransformWriter = itk::TransformFileWriterTemplate<double>::New();
-	TransformWriter->SetInput(T);
-	std::experimental::filesystem::path Filename(OutputFilename);
+    (T != nullptr) ? TransformWriter->SetInput(T) : TransformWriter->SetInput(B); // writes only BSpline or Euler3D
+	const std::experimental::filesystem::path Filename(OutputFilename);
 	TransformWriter->SetFileName(Filename.stem().string() + ".tfm");
 	TransformWriter->Update();
 
 	auto ResampleFilter = ResampleImageFilterType::New();
 	ResampleFilter->SetInput(ImageReader->GetOutput());
-	ResampleFilter->SetTransform(T);
-	ResampleFilter->SetDefaultPixelValue(0);
-
-	ResampleFilter->SetInput(ImageReader->GetOutput());
-	ResampleFilter->SetTransform(T);
 	ResampleFilter->SetDefaultPixelValue(0);
 
 	ResampleFilter->SetSize(ImageReader->GetOutput()->GetLargestPossibleRegion().GetSize());
 	ResampleFilter->SetOutputSpacing(ImageReader->GetOutput()->GetSpacing());
 
-	const auto OutputOrigin = T->GetInverseTransform()->TransformPoint(ImageReader->GetOutput()->GetOrigin());
-	ResampleFilter->SetOutputOrigin(OutputOrigin);
-	const auto InverseTransform = T->Clone();
-	T->GetInverse(InverseTransform);
-	const auto OutputDirection = InverseTransform->GetMatrix() * ImageReader->GetOutput()->GetDirection();
-	ResampleFilter->SetOutputDirection(OutputDirection);
+    if(T != nullptr)
+    {
+        ResampleFilter->SetTransform(T);
+        const auto OutputOrigin = T->GetInverseTransform()->TransformPoint(ImageReader->GetOutput()->GetOrigin());
+        ResampleFilter->SetOutputOrigin(OutputOrigin);
+        const auto InverseTransform = T->Clone();
+        T->GetInverse(InverseTransform);
+        const auto OutputDirection = InverseTransform->GetMatrix() * ImageReader->GetOutput()->GetDirection();
+        ResampleFilter->SetOutputDirection(OutputDirection);
+    }
+
+    if(B != nullptr)
+    {
+        ResampleFilter->SetTransform(B);
+        ResampleFilter->SetOutputOrigin(ImageReader->GetOutput()->GetOrigin());
+        ResampleFilter->SetOutputDirection(ImageReader->GetOutput()->GetDirection());
+    }
+
 
 	try
 	{
