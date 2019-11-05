@@ -7,6 +7,7 @@ find_package(ITK REQUIRED COMPONENTS
 	ITKIOImageBase
 	ITKIONRRD
 	ITKIOTIFF
+    ITKIOPNG
 )
 
 include(${ITK_USE_FILE})

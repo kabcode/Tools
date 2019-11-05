@@ -16,12 +16,10 @@ template<int dimension>
 void AssertDepencency()
 {
 	static_assert(dimension < 3, "function 2 not available");
-	std::cout << "Here" << std::endl;
 }
 
 void AssertTest(int dimension)
 {
-	std::cout << dimension << std::endl;
 	AssertDepencency<2>();
 }
 
@@ -90,32 +88,33 @@ int main(int argc, char* argv[])
 
 	std::ofstream outputFile(OutputFileName, std::ios::trunc);
 
-	auto stepsize(1);
+	auto stepsize(10);
 
 	if (!outputFile.is_open()) {
 		std::cout << "File could not be opened." << std::endl;
 	}
 	else {
-		for (auto x = -50.0; x <= 50.0; x += stepsize)
+		for (auto x = -300.0; x <= 300.0; x += stepsize)
 		{
 			params(0) = x;
-			for (auto y = -50.0; y <= 50.0; y += stepsize)
+			for (auto y = -300.0; y <= 300.0; y += stepsize)
 			{
 				params(1) = y;
 				try
 				{
 					auto value = MSMetric->GetValue(params);
-					outputFile << x << "   " << y << "   " << value << std::endl;
+                    outputFile << value << " ";
 					//std::cout << x << "\t" << y << " \t" << value << std::endl;
 				}
 				catch(...)
 				{
-					outputFile << x << "   " << y << "   " << "NaN" << std::endl;
+					outputFile << "NaN" << " ";
 					//std::cout << x << "\t" << y << " \t" << "Too many outside samples" << std::endl;
 				}
 				
 				
 			}
+            outputFile << std::endl;
 		}
 	}
 
