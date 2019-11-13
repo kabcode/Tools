@@ -2,6 +2,7 @@
 #include "itkLinearInterpolateImageFunction.h"
 #include "itkTranslationTransform.h"
 #include "itkMeanSquaresImageToImageMetric.h"
+#include "itkAdvGradientDifferenceImageToImageMetric.h"
 
 using PixelType = double;
 static constexpr unsigned int Dim = 2;
@@ -10,7 +11,7 @@ using ImageReaderType = itk::ImageFileReader<ImageType>;
 using InterpolatorType = itk::LinearInterpolateImageFunction<ImageType>;
 using TranslationTransformType = itk::TranslationTransform<double, Dim>;
 
-using MSMetricType = itk::MeanSquaresImageToImageMetric<ImageType, ImageType>;
+using AGDMetricType = itk::AdvGradientDifferenceImageToImageMetric<ImageType, ImageType>;
 
 template<int dimension>
 void AssertDepencency()
@@ -63,20 +64,22 @@ int main(int argc, char* argv[])
 	auto Interpolator = InterpolatorType::New();
 	Interpolator->SetInputImage(FixedFileReader->GetOutput());
 
-	auto MSMetric = MSMetricType::New();
-	MSMetric->SetInterpolator(Interpolator);
-	MSMetric->SetTransform(TranslationTransform);
-	MSMetric->SetFixedImage(FixedFileReader->GetOutput());
-	MSMetric->SetFixedImageRegion(FixedFileReader->GetOutput()->GetLargestPossibleRegion());
-	MSMetric->SetMovingImage(MovingFileReader->GetOutput());
+	auto AGDMetric = AGDMetricType::New();
+    AGDMetric->SetInterpolator(Interpolator);
+    AGDMetric->SetTransform(TranslationTransform);
+    AGDMetric->SetFixedImage(FixedFileReader->GetOutput());
+    AGDMetric->SetFixedImageRegion(FixedFileReader->GetOutput()->GetLargestPossibleRegion());
+    AGDMetric->SetMovingImage(MovingFileReader->GetOutput());
 	
 
 	TranslationTransformType::ParametersType params(TranslationTransform->GetNumberOfParameters());
 	params.Fill(0.0);
 
-	MSMetric->Initialize();
+    AGDMetric->Initialize();
 
-	std::string OutputFileName("");
+    std::cout << AGDMetric->GetValue(params) << std::endl;
+
+	std::string OutputFileName;
 	if (argc < 4)
 	{
 		OutputFileName = "MetricMap.txt";
@@ -88,21 +91,21 @@ int main(int argc, char* argv[])
 
 	std::ofstream outputFile(OutputFileName, std::ios::trunc);
 
-	auto stepsize(10);
+	const auto stepsize(5);
 
 	if (!outputFile.is_open()) {
 		std::cout << "File could not be opened." << std::endl;
 	}
 	else {
-		for (auto x = -300.0; x <= 300.0; x += stepsize)
+		for (auto x = -20; x <= 20; x += stepsize)
 		{
 			params(0) = x;
-			for (auto y = -300.0; y <= 300.0; y += stepsize)
+			for (auto y = -20; y <= 20; y += stepsize)
 			{
 				params(1) = y;
 				try
 				{
-					auto value = MSMetric->GetValue(params);
+					const auto value = AGDMetric->GetValue(params);
                     outputFile << value << " ";
 					//std::cout << x << "\t" << y << " \t" << value << std::endl;
 				}

@@ -8,6 +8,7 @@ find_package(ITK REQUIRED COMPONENTS
 	ITKIONRRD
 	ITKIOTIFF
     ITKIOPNG
+    MultiObjectRegistrationFramework
 )
 
 include(${ITK_USE_FILE})
