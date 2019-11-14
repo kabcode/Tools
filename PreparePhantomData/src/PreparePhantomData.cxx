@@ -102,6 +102,7 @@ int main(int argc, char* argv[])
     for (unsigned long long i = 0; i < LabelMapPointer->GetNumberOfLabelObjects(); ++i)
     {
         const auto LabelObject = LabelMapPointer->GetNthLabelObject(i);
+        
         auto MaskedImage = ImageType::New();
         auto region = ImageReader->GetOutput()->GetLargestPossibleRegion();
         MaskedImage->SetRegions(region);
@@ -113,20 +114,23 @@ int main(int argc, char* argv[])
         MaskedImage->SetOrigin(ImageReader->GetOutput()->GetOrigin());
 
         itk::ImageRegionIterator<ImageType> MaskIterator(MaskedImage, MaskedImage->GetLargestPossibleRegion());
-        itk::ImageRegionConstIterator<ImageType> LabelIterator(ImageReader->GetOutput(), ImageReader->GetOutput()->GetLargestPossibleRegion());
+        itk::ImageRegionConstIterator<ImageType> LabelIterator(MultiplyImageFilter->GetOutput(), MultiplyImageFilter->GetOutput()->GetLargestPossibleRegion());
 
         /* Copy the label into a new image */
+        const auto label = LabelObject->GetLabel();
+        unsigned long long counter = 0;
         while (!MaskIterator.IsAtEnd())
         {
-            if (LabelIterator.Get() == i)
+            if (LabelIterator.Get() == label)
             {
-                MaskIterator.Set(LabelIterator.Get());
+                MaskIterator.Set(label);
+                counter++;
             }
             ++MaskIterator;
             ++LabelIterator;
         }
 
-
+        std::cout << "Label " << label << ": " << counter << std::endl;
         /* Crop masked intensity images to the bounding box */
         auto RegionOfInterestFilter = itk::RegionOfInterestImageFilter<ImageType, ImageType>::New();
         RegionOfInterestFilter->SetInput(MaskedImage);
