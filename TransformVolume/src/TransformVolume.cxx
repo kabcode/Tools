@@ -12,7 +12,7 @@
 #include "itkExtractImageFilter.h"
 
 
-using PixelType = unsigned char;
+using PixelType = float;
 const unsigned int Dim3D = 3;
 const unsigned int Dim2D = 2;
 using InputImageType = itk::Image<PixelType, Dim3D>;
@@ -133,6 +133,7 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
+        T = EulerTransformType::New();
 		T->SetRotation(deg2rad(Rotation[0]), deg2rad(Rotation[1]), deg2rad(Rotation[2]));
 		EulerTransformType::OutputVectorType TranslationVector;
 		for (auto i = 0; i < Translation.size(); ++i)
