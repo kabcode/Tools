@@ -12,7 +12,7 @@
 #include "itkExtractImageFilter.h"
 
 
-using PixelType = unsigned char;
+using PixelType = float;
 const unsigned int Dim3D = 3;
 const unsigned int Dim2D = 2;
 using InputImageType = itk::Image<PixelType, Dim3D>;
@@ -34,13 +34,13 @@ double inline deg2rad(double deg) { return deg / 180 * (itk::Math::pi / 2);  }
 void
 PrintUsage(char * programmname)
 {
-	std::cout << "\nInformation to " << programmname << std::endl;
-	std::cout << "Usage: " << std::endl;
-	std::cout << programmname << " VolumeFile -o OutputFile <optional parameters>" << std::endl;
-	std::cout << "\noptional parameters:\n" << std::endl;
-	std::cout << "-t x y z \t\t Translation in x,y,z direction in mm" << std::endl;
-	std::cout << "-r x y z \t\t Rotation around x,y,z axis in degree(order: ZXY)" << std::endl;
-	std::cout << "-f Transformfilename \t\t File with transformation parameter" << std::endl;
+	std::cout << "\nInformation to " << programmname << "\n";
+	std::cout << "Usage: " << "\n";
+	std::cout << programmname << " VolumeFile -o OutputFile <optional parameters>" << "\n";
+	std::cout << "\noptional parameters:\n" << "\n";
+	std::cout << "-t x y z \t\t Translation in x,y,z direction in mm" << "\n";
+	std::cout << "-r x y z \t\t Rotation around x,y,z axis in degree(order: ZXY)" << "\n";
+	std::cout << "-f Transformfilename \t File with transformation parameter" << "\n";
 	std::cout << std::endl;
 }
 
@@ -54,10 +54,10 @@ int main(int argc, char* argv[])
 	}
 
 	// input handling
-	std::vector<double> Translation = {0,0,0};
-	std::vector<double> Rotation = {0,0,0};
-	std::string OutputFilename("");
-	std::string TransformationFileName("");
+	std::vector<double> Translation {0,0,0};
+	std::vector<double> Rotation {0,0,0};
+    std::string OutputFilename{ "" };
+    std::string TransformationFileName{ "" };
 	for (auto i = 1; i < argc; ++i)
 	{
 		if( std::string(argv[i]) == "-o")
@@ -133,9 +133,10 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
+        T = EulerTransformType::New();
 		T->SetRotation(deg2rad(Rotation[0]), deg2rad(Rotation[1]), deg2rad(Rotation[2]));
 		EulerTransformType::OutputVectorType TranslationVector;
-		for (auto i = 0; i < Translation.size(); ++i)
+		for (size_t i = 0; i < Translation.size(); ++i)
 		{
 			TranslationVector[i] = Translation[i];
 		}
@@ -155,7 +156,16 @@ int main(int argc, char* argv[])
     (T != nullptr) ? TransformWriter->SetInput(T) : TransformWriter->SetInput(B); // writes only BSpline or Euler3D
 	const std::experimental::filesystem::path Filename(OutputFilename);
 	TransformWriter->SetFileName(Filename.stem().string() + ".tfm");
-	TransformWriter->Update();
+    try
+    {
+        std::cout << Filename.stem().string() + ".tfm" << std::endl;
+        TransformWriter->Update();
+    }
+    catch (itk::ExceptionObject &E)
+    {
+        E.Print(std::cout);
+    }
+	
 
 	auto ResampleFilter = ResampleImageFilterType::New();
 	ResampleFilter->SetInput(ImageReader->GetOutput());
@@ -199,6 +209,7 @@ int main(int argc, char* argv[])
 	
 	try
 	{
+        std::cout << OutputFilename << std::endl;
 		ImageWriter->Update();
 	}
 	catch (itk::ExceptionObject &EO)
