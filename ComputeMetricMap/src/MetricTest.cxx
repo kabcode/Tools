@@ -94,9 +94,9 @@ int main(int argc, char* argv[])
 
 	std::ofstream outputFile(OutputFileName, std::ios::trunc);
 
-	const auto stepsize(0.5);
+	const auto stepsize(1);
     const std::pair<int, int> x_range{ -60,60 };
-    const std::pair<int, int> y_range{ -400,400 };
+    const std::pair<int, int> y_range{ -300,300 };
 
     std::pair<int, int> steps{computeSteps(x_range, stepsize), computeSteps(y_range, stepsize)};
 
@@ -106,10 +106,10 @@ int main(int argc, char* argv[])
 		std::cout << "File could not be opened." << std::endl;
 	}
 	else {
-		for (auto x = x_range.first; x <= x_range.second; x += stepsize)
+		for (double x = x_range.first; x <= x_range.second; x += stepsize)
 		{
 			params(0) = x;
-			for (auto y = y_range.first; y <= y_range.second; y += stepsize)
+			for (double y = y_range.first; y <= y_range.second; y += stepsize)
 			{
 				params(1) = y;
 				try
