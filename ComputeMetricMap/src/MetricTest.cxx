@@ -32,6 +32,11 @@ PrintUsage(std::string programme)
 	std::cout << "Output:" << " MetricMap.txt with 3 columns (x,y,metric value) \n";
 }
 
+inline int computeSteps(std::pair<int,int> range, int stepsize)
+{
+    return std::abs(range.second - range.first)/(double)stepsize + 1;
+}
+
 int main(int argc, char* argv[])
 {
 	if (argc < 3 || argc > 4)
@@ -77,8 +82,6 @@ int main(int argc, char* argv[])
 
     AGDMetric->Initialize();
 
-    std::cout << AGDMetric->GetValue(params) << std::endl;
-
 	std::string OutputFileName;
 	if (argc < 4)
 	{
@@ -91,33 +94,37 @@ int main(int argc, char* argv[])
 
 	std::ofstream outputFile(OutputFileName, std::ios::trunc);
 
-	const auto stepsize(5);
+	const auto stepsize(0.5);
+    const std::pair<int, int> x_range{ -60,60 };
+    const std::pair<int, int> y_range{ -400,400 };
+
+    std::pair<int, int> steps{computeSteps(x_range, stepsize), computeSteps(y_range, stepsize)};
+
+    outputFile << "0 " << steps.first << " 1 " << steps.second << " " << stepsize << std::endl;
 
 	if (!outputFile.is_open()) {
 		std::cout << "File could not be opened." << std::endl;
 	}
 	else {
-		for (auto x = -20; x <= 20; x += stepsize)
+		for (auto x = x_range.first; x <= x_range.second; x += stepsize)
 		{
 			params(0) = x;
-			for (auto y = -20; y <= 20; y += stepsize)
+			for (auto y = y_range.first; y <= y_range.second; y += stepsize)
 			{
 				params(1) = y;
 				try
 				{
 					const auto value = AGDMetric->GetValue(params);
-                    outputFile << value << " ";
-					//std::cout << x << "\t" << y << " \t" << value << std::endl;
+                    outputFile <<"[" << x << ", " << y << "], " << value << std::endl;
+					
 				}
 				catch(...)
 				{
-					outputFile << "NaN" << " ";
-					//std::cout << x << "\t" << y << " \t" << "Too many outside samples" << std::endl;
+                    outputFile << "[" << x << ", " << y << "], " << "Nan" << std::endl;
 				}
 				
 				
 			}
-            outputFile << std::endl;
 		}
 	}
 
