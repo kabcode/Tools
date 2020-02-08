@@ -14,6 +14,22 @@ inline auto CheckSpacing(ImageType::SpacingValueType in, ImageType::SpacingValue
 {
     return (in == -1.f) ? sp : in;
 }
+inline auto ComputeOutputOrigin(ImageType::PointType or ,ImageType::SpacingType in, ImageType::SpacingType out) -> ImageType::PointType
+{
+    ImageType::PointType outputOrigin;
+    for(unsigned int i = 0; i < or.Size(); ++i)
+    {
+        if(out[i] < in[i])
+            outputOrigin[i] = or [i] + 0.5 * out[i] / in[i];
+        
+        if (out[i] > in[i])
+            outputOrigin[i] = or [i] - 0.5 * out[i] / in[i];
+
+        if (out[i] == in[i])
+            outputOrigin[i] = or[i];
+    }
+    return outputOrigin;
+}
 
 inline auto ResizeDimension(ImageType::SizeType in_sz, ImageType::SpacingType in_sp, ImageType::SpacingType out_sp) -> ImageType::SizeType
 {
@@ -31,7 +47,7 @@ int main(int argc, char *argv[])
 {
 	if(argc < 6)
 	{
-		std::cout << argv[0] << " InputImageFileName -o OutputFilename -spacing x y z" << std::endl;
+		std::cout << argv[0] << " InputImageFileName -o OutputFilename -sp x y z" << std::endl;
 		return EXIT_FAILURE;
 	}
 
@@ -47,7 +63,6 @@ int main(int argc, char *argv[])
         EO.Print(std::cout);
         return EXIT_FAILURE;
     }
- 
 
     std::string OutputFilename{ "" };
     auto outputSpacing = ImageFileReader->GetOutput()->GetSpacing();
@@ -58,7 +73,7 @@ int main(int argc, char *argv[])
 			++i;
 			OutputFilename = argv[i];
 		}
-        if (std::string(argv[i]) == "-spacing")
+        if (std::string(argv[i]) == "-sp")
         {
             ++i;
             outputSpacing[0] = CheckSpacing(std::strtof(argv[i],nullptr), outputSpacing[0]);
@@ -71,9 +86,13 @@ int main(int argc, char *argv[])
 
     auto ResampleFilter = itk::ResampleImageFilter<ImageType, ImageType>::New();
     ResampleFilter->SetInput(ResamplingImage);
+
+    const auto LinearInt = itk::LinearInterpolateImageFunction<ImageType>::New();
+    ResampleFilter->SetInterpolator(LinearInt);
   
     ResampleFilter->SetOutputDirection(ImageFileReader->GetOutput()->GetDirection());
-    ResampleFilter->SetOutputOrigin(ImageFileReader->GetOutput()->GetOrigin());
+    const auto OutputOrigin = ComputeOutputOrigin(ImageFileReader->GetOutput()->GetOrigin(), ImageFileReader->GetOutput()->GetSpacing(), outputSpacing);
+    ResampleFilter->SetOutputOrigin(OutputOrigin);
     const auto OutputSize = ResizeDimension(ResamplingImage->GetLargestPossibleRegion().GetSize(), ResamplingImage->GetSpacing(), outputSpacing);
     ResampleFilter->SetSize(OutputSize);
     ResampleFilter->SetOutputSpacing(outputSpacing);
