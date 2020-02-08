@@ -1,7 +1,5 @@
 #include "rtkThreeDCircularProjectionGeometryXMLFile.h"
 #include "rtkJosephForwardProjectionImageFilter.h"
-#include "itkRayCastInterpolateImageFunction.h"
-#include "rtkZengForwardProjectionImageFilter.h"
 #include "rtkCudaForwardProjectionImageFilter.h"
 
 #include "rtkConstantImageSource.h"
@@ -13,26 +11,28 @@ using OutputPixelType = float;
 constexpr unsigned int Dimension = 3;
 using OutputImageType = itk::CudaImage< OutputPixelType, Dimension >;
 
-void WriteImageFile(OutputImageType::Pointer image, std::string& outputname, unsigned int size, std::string additionalInformation = "");
+void WriteImageFile(const OutputImageType::Pointer& image, std::string& outputname, unsigned int size, std::string additionalInformation = "");
 
 int main(int argc, char * argv[])
 {
 
-    rtk::ThreeDCircularProjectionGeometryXMLFileReader::Pointer geometryReader;
-    geometryReader = rtk::ThreeDCircularProjectionGeometryXMLFileReader::New();
+    auto geometryReader = rtk::ThreeDCircularProjectionGeometryXMLFileReader::New();
     geometryReader->SetFilename(argv[2]);
     TRY_AND_EXIT_ON_ITK_EXCEPTION(geometryReader->GenerateOutputInformation())
 
         // Create a stack of empty projection images
         using ConstantImageSourceType = rtk::ConstantImageSource< OutputImageType >;
     ConstantImageSourceType::Pointer constantImageSource = ConstantImageSourceType::New();
-    constantImageSource->SetSize(OutputImageType::SizeType{ 512,512,1 });
+    OutputImageType::SizeType OutputSize{ 2048,2048,1 };
+    constantImageSource->SetSize(OutputSize);
     OutputImageType::SpacingType spacing;
     spacing.Fill(1);
+    spacing[0] = 512. / OutputSize[0];
+    spacing[1] = 512. / OutputSize[1];
     constantImageSource->SetSpacing(spacing);
     OutputImageType::PointType origin;
-    origin[0] = -256;
-    origin[1] = -256;
+    origin[0] = -(OutputSize[0] * spacing[0]/2.0);
+    origin[1] = -(OutputSize[1] * spacing[1] /2.0);
     origin[2] = 0;
     constantImageSource->SetOrigin(origin);
 
@@ -49,99 +49,58 @@ int main(int argc, char * argv[])
     reader->SetFileName(argv[1]);
     TRY_AND_EXIT_ON_ITK_EXCEPTION(reader->Update());
 
-    auto ITKforwardProjection = itk::RayCastInterpolateImageFunction<OutputImageType>::New();
-    auto focalpointRTK = geometryReader->GetOutputObject()->GetSourcePosition(0);
-    itk::RayCastInterpolateImageFunction<OutputImageType>::InputPointType focalpoint;
-    focalpoint[0] = focalpointRTK[0];
-    focalpoint[1] = focalpointRTK[1] + 130;
-    focalpoint[2] = focalpointRTK[2];
+    rtk::ForwardProjectionImageFilter<OutputImageType>::Pointer forwardProjection;
+    std::string outputfilename{ "" };
 
-    std::cout << "Focal Point: " << focalpoint[0] << ", " << focalpoint[1] << ", " << focalpoint[2] << std::endl;
+    /*
+    forwardProjection = rtk::JosephForwardProjectionImageFilter<OutputImageType, OutputImageType>::New();
+    outputfilename.append("Joseph");
+    */
+    
+    forwardProjection = rtk::CudaForwardProjectionImageFilter<OutputImageType, OutputImageType>::New();
+    dynamic_cast<rtk::CudaForwardProjectionImageFilter<OutputImageType, OutputImageType>*>(forwardProjection.GetPointer())->SetStepSize(1);
+    outputfilename.append("Cuda");
+    
+    forwardProjection->SetInput(constantImageSource->GetOutput());
+    forwardProjection->SetInput(1, reader->GetOutput());
+    forwardProjection->SetGeometry(geometryReader->GetOutputObject());
 
-    ITKforwardProjection->SetFocalPoint(focalpoint);
-    auto transform = itk::Euler3DTransform<>::New();
-    transform->SetIdentity();
-    ITKforwardProjection->SetTransform(transform);
-
-    auto resampleImageFilter = itk::ResampleImageFilter<OutputImageType, OutputImageType>::New();
-    resampleImageFilter->SetTransform(transform);
-    resampleImageFilter->SetInput(reader->GetOutput());
-    resampleImageFilter->SetInterpolator(ITKforwardProjection);
-    resampleImageFilter->SetSize(sizeOutput);
-    resampleImageFilter->SetOutputSpacing(spacing);
-    auto ITKorigin = origin;
-    ITKorigin[2] = -750;
-    resampleImageFilter->SetOutputOrigin(ITKorigin);
-
-    rtk::ForwardProjectionImageFilter<OutputImageType, OutputImageType>::Pointer forwardProjection;
-    auto image = OutputImageType::New();
-
-
-    for (unsigned int i = 1; i < 5; ++i)
+    std::vector<long long> durations(105);
+    for (unsigned int run = 0; run < durations.size(); ++run)
     {
-        for (unsigned int runs = 0; runs < 5; ++runs)
         {
-            std::string outputfilename{ "" };
-            switch (i)
-            {
-            case(1):
-                forwardProjection = rtk::JosephForwardProjectionImageFilter<OutputImageType, OutputImageType>::New();
-                outputfilename.append("Joseph");
-                break;
-            case(2):
-                forwardProjection = rtk::ZengForwardProjectionImageFilter<OutputImageType, OutputImageType>::New();
-                outputfilename.append("Zeng");
-                break;
-            case(3):
-                forwardProjection = rtk::CudaForwardProjectionImageFilter<OutputImageType, OutputImageType>::New();
-                dynamic_cast<rtk::CudaForwardProjectionImageFilter<OutputImageType, OutputImageType>*>(forwardProjection.GetPointer())->SetStepSize(1);
-                outputfilename.append("Cuda");
-                break;
-            case(4):
-
-                outputfilename.append("ITK");
-                break;
-            default:
-                std::cerr << "Unhandled --method value." << std::endl;
-                return EXIT_FAILURE;
-            }
-
-            if (i == 1 || i == 2 || i == 3)
-            {
-                forwardProjection->SetInput(constantImageSource->GetOutput());
-                forwardProjection->SetInput(1, reader->GetOutput());
-                forwardProjection->SetGeometry(geometryReader->GetOutputObject());
-                {
-                    auto Timer{ HighPrecisionTimer<TimeUnits::Milliseconds>() };
-                    TRY_AND_EXIT_ON_ITK_EXCEPTION(forwardProjection->Update());
-                }
-
-                image = forwardProjection->GetOutput();
-            }
-            else
-            {
-                {
-                    auto Timer{ HighPrecisionTimer<TimeUnits::Milliseconds>() };
-                    TRY_AND_EXIT_ON_ITK_EXCEPTION(resampleImageFilter->Update());
-                }
-                image = resampleImageFilter->GetOutput();
-            }
-
-            WriteImageFile(image, outputfilename, reader->GetOutput()->GetLargestPossibleRegion().GetSize()[0], std::to_string(runs));
-
+            auto Timer{ HighPrecisionTimer<TimeUnits::Microseconds, false>(&durations[run]) };
+            TRY_AND_EXIT_ON_ITK_EXCEPTION(forwardProjection->Update());
         }
+        forwardProjection->Modified();
+    }
+    const auto image = forwardProjection->GetOutput();
+    WriteImageFile(image, outputfilename, reader->GetOutput()->GetLargestPossibleRegion().GetSize()[0], "2048");
+
+
+    durations.erase(durations.begin(), durations.begin() + 5);
+
+    std::ofstream outstream{ "cuda_2048.txt", std::ios::out | std::ios::trunc };
+
+    if (outstream.is_open())
+    {
+        for each (auto& datapoint in durations)
+        {
+            outstream << datapoint << std::endl;
+        }
+        outstream.close();
     }
 
     return EXIT_SUCCESS;
 }
 
-void WriteImageFile(OutputImageType::Pointer image, std::string & outputname, unsigned int size, std::string additionalInformation)
+void WriteImageFile(const OutputImageType::Pointer& image, std::string & outputname, unsigned int size, std::string additionalInformation)
 {
     outputname.append("_");
     outputname.append(std::to_string(size));
-    if(!additionalInformation.empty())
+    if (!additionalInformation.empty())
     {
-        outputname.append("_run");
+        outputname.append("_");
         outputname.append(additionalInformation);
     }
 
