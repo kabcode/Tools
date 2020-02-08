@@ -13,7 +13,7 @@ using OutputPixelType = float;
 constexpr unsigned int Dimension = 3;
 using OutputImageType = itk::CudaImage< OutputPixelType, Dimension >;
 
-void WriteImageFile(OutputImageType::Pointer image, std::string& outputname, unsigned int size);
+void WriteImageFile(OutputImageType::Pointer image, std::string& outputname, unsigned int size, std::string additionalInformation = "");
 
 int main(int argc, char * argv[])
 {
@@ -79,63 +79,72 @@ int main(int argc, char * argv[])
 
     for (unsigned int i = 1; i < 5; ++i)
     {
-        std::string outputfilename{ "" };
-        switch (i)
+        for (unsigned int runs = 0; runs < 5; ++runs)
         {
-        case(1):
-            forwardProjection = rtk::JosephForwardProjectionImageFilter<OutputImageType, OutputImageType>::New();
-            outputfilename.append("Joseph");
-            break;
-        case(2):
-            forwardProjection = rtk::ZengForwardProjectionImageFilter<OutputImageType, OutputImageType>::New();
-            outputfilename.append("Zeng");
-            break;
-        case(3):
-            forwardProjection = rtk::CudaForwardProjectionImageFilter<OutputImageType, OutputImageType>::New();
-            dynamic_cast<rtk::CudaForwardProjectionImageFilter<OutputImageType, OutputImageType>*>(forwardProjection.GetPointer())->SetStepSize(1);
-            outputfilename.append("Cuda");
-            break;
-        case(4):
-
-            outputfilename.append("ITK");
-            break;
-        default:
-            std::cerr << "Unhandled --method value." << std::endl;
-            return EXIT_FAILURE;
-        }
-
-        if (i == 1 || i == 2 || i == 3)
-        {
-            forwardProjection->SetInput(constantImageSource->GetOutput());
-            forwardProjection->SetInput(1, reader->GetOutput());
-            forwardProjection->SetGeometry(geometryReader->GetOutputObject());
+            std::string outputfilename{ "" };
+            switch (i)
             {
-                auto Timer{ HighPrecisionTimer<TimeUnits::Milliseconds>() };
-                TRY_AND_EXIT_ON_ITK_EXCEPTION(forwardProjection->Update());
+            case(1):
+                forwardProjection = rtk::JosephForwardProjectionImageFilter<OutputImageType, OutputImageType>::New();
+                outputfilename.append("Joseph");
+                break;
+            case(2):
+                forwardProjection = rtk::ZengForwardProjectionImageFilter<OutputImageType, OutputImageType>::New();
+                outputfilename.append("Zeng");
+                break;
+            case(3):
+                forwardProjection = rtk::CudaForwardProjectionImageFilter<OutputImageType, OutputImageType>::New();
+                dynamic_cast<rtk::CudaForwardProjectionImageFilter<OutputImageType, OutputImageType>*>(forwardProjection.GetPointer())->SetStepSize(1);
+                outputfilename.append("Cuda");
+                break;
+            case(4):
+
+                outputfilename.append("ITK");
+                break;
+            default:
+                std::cerr << "Unhandled --method value." << std::endl;
+                return EXIT_FAILURE;
             }
 
-            image = forwardProjection->GetOutput();
-        }
-        else
-        {
+            if (i == 1 || i == 2 || i == 3)
             {
-                auto Timer{ HighPrecisionTimer<TimeUnits::Milliseconds>() };
-                TRY_AND_EXIT_ON_ITK_EXCEPTION(resampleImageFilter->Update());
+                forwardProjection->SetInput(constantImageSource->GetOutput());
+                forwardProjection->SetInput(1, reader->GetOutput());
+                forwardProjection->SetGeometry(geometryReader->GetOutputObject());
+                {
+                    auto Timer{ HighPrecisionTimer<TimeUnits::Milliseconds>() };
+                    TRY_AND_EXIT_ON_ITK_EXCEPTION(forwardProjection->Update());
+                }
+
+                image = forwardProjection->GetOutput();
             }
-            image = resampleImageFilter->GetOutput();
+            else
+            {
+                {
+                    auto Timer{ HighPrecisionTimer<TimeUnits::Milliseconds>() };
+                    TRY_AND_EXIT_ON_ITK_EXCEPTION(resampleImageFilter->Update());
+                }
+                image = resampleImageFilter->GetOutput();
+            }
+
+            WriteImageFile(image, outputfilename, reader->GetOutput()->GetLargestPossibleRegion().GetSize()[0], std::to_string(runs));
+
         }
-
-        WriteImageFile(image, outputfilename, reader->GetOutput()->GetLargestPossibleRegion().GetSize()[0]);
-
     }
 
     return EXIT_SUCCESS;
 }
 
-void WriteImageFile(OutputImageType::Pointer image, std::string & outputname, unsigned int size)
+void WriteImageFile(OutputImageType::Pointer image, std::string & outputname, unsigned int size, std::string additionalInformation)
 {
     outputname.append("_");
     outputname.append(std::to_string(size));
+    if(!additionalInformation.empty())
+    {
+        outputname.append("_run");
+        outputname.append(additionalInformation);
+    }
+
     outputname.append(".nrrd");
     using WriterType = itk::ImageFileWriter<  OutputImageType >;
     WriterType::Pointer writer = WriterType::New();
